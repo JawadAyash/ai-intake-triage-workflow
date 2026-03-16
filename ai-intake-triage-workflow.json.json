@@ -1,0 +1,839 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/support-intake",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -272,
+        0
+      ],
+      "id": "c329c4a1-4e9f-46c2-a09f-ee4c73392db2",
+      "name": "Webhook",
+      "webhookId": "6e92a441-b240-4efe-b20d-558fef17c954"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n \"model\": \"gpt-4o-mini\",\n \"temperature\": 0,\n \"messages\": [\n  {\n   \"role\": \"system\",\n   \"content\": \"You classify customer support tickets.\"\n  },\n  {\n   \"role\": \"user\",\n   \"content\": \"Classify the support request.\\n\\nReturn ONLY JSON with:\\ncategory\\npriority\\nconfidence\\n\\nAllowed categories:\\nBug Report\\nFeature Request\\nBilling Issue\\nTechnical Question\\nIncident/Outage\\n\\nUse exactly one of these categories.\\n\\nMessage:\\n{{$json.body.message}}\"\n  }\n ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -112,
+        0
+      ],
+      "id": "ba0c55d0-cb95-4318-b6c1-c199bb0af898",
+      "name": "Classification",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "4zRvA6vva22t37nS",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n \"model\": \"gpt-4o-mini\",\n \"temperature\": 0,\n \"messages\": [\n  {\n   \"role\": \"system\",\n   \"content\": \"You extract structured data from support messages.\"\n  },\n  {\n   \"role\": \"user\",\n   \"content\": \"Extract structured information.\\n\\nReturn ONLY JSON with:\\nissue_summary\\nidentifiers\\nurgency\\n\\nMessage:\\n{{$json.original_message}}\"\n  }\n ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "79af27fc-c94d-43be-b835-2f67dd737376",
+      "name": "Enrichment",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "vseOnFMbx3rfGPUX",
+          "name": "Bearer Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const raw = $json.choices[0].message.content;\n\nconst cleaned = raw\n  .replace(/```json\\s*/i, '')\n  .replace(/```/g, '')\n  .trim();\n\nconst enrichment = JSON.parse(cleaned);\nreturn {\n  issue_summary: enrichment.issue_summary,\n  identifiers: enrichment.identifiers,\n  urgency: enrichment.urgency\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ],
+      "id": "076dfa94-7bc1-4550-bc52-81c53c36ead4",
+      "name": "Parse Enrichment"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const raw = $json.choices[0].message.content;\n\n// Remove markdown code fences if present\nconst cleaned = raw\n  .replace(/```json\\s*/i, '')\n  .replace(/```/g, '')\n  .trim();\n\nconst classification = JSON.parse(cleaned);\n\nreturn {\n  original_message: $('Webhook').first().json.body.message,\n  source: $('Webhook').first().json.body.source,\n  category: classification.category,\n  priority: classification.priority,\n  confidence: classification.confidence\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        0
+      ],
+      "id": "3eda830b-a3d0-4598-90c6-30c0da215a78",
+      "name": "Parse Classification"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        528,
+        -176
+      ],
+      "id": "27713617-73fa-4e17-b68f-2bed8fd8e4a0",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.category}} ",
+                    "rightValue": " Bug Report",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "a26bdfb5-6399-41aa-8b09-8564b71d9aa8"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f5fb1853-7abe-412c-8a98-02cce6d0f063",
+                    "leftValue": "={{$json.category.trim()}} ",
+                    "rightValue": "Feature Request",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "76db1caf-ab93-4399-9d15-cabaac4d41c1",
+                    "leftValue": "={{$json.category}}",
+                    "rightValue": "Billing Issue",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "25b5aa35-4b85-4e29-9195-53ce8879e927",
+                    "leftValue": "={{$json.category}}",
+                    "rightValue": "Technical Question",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "156acca4-7fa3-4b53-bb74-60918f804135",
+                    "leftValue": "={{$json.category}}",
+                    "rightValue": "Incident/Outage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        640,
+        0
+      ],
+      "id": "634e7abc-fdbe-4f2c-bf9c-b40bd2716c65",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "03322fdb-c090-4d8c-b258-87a1db17962a",
+              "leftValue": "={{$json.confidence}}",
+              "rightValue": 0.7,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            },
+            {
+              "id": "ec7834fa-c46b-42c6-b36a-a3513189816c",
+              "leftValue": "={{$json.category}}",
+              "rightValue": "Billing Issue",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "e94bfe67-dc97-435e-aee9-30f549d86df6",
+              "leftValue": "={{$json.original_message}}",
+              "rightValue": "Down for all users",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1152,
+        -16
+      ],
+      "id": "f3c1dee1-cd64-4301-962a-953d5c42cfd0",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5ce9816e-8357-43e0-a45f-d0914d773fbd",
+              "name": "destination_queue",
+              "value": "Escalation",
+              "type": "string"
+            },
+            {
+              "id": "f8b63d3f-277c-4e72-b1b5-06026face1b2",
+              "name": "escalation",
+              "value": "true",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1392,
+        -112
+      ],
+      "id": "10f9d2a4-213b-435d-b960-025c31938578",
+      "name": "Set Escalation"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e9783719-87e4-4b26-ae99-e34a716bad3a",
+              "name": "escalation",
+              "value": "false",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1392,
+        80
+      ],
+      "id": "5920c00b-2244-46ec-98ae-48bb71b1bfa5",
+      "name": "Set Normal"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1fB4A0XfF6ofqVvoLn2NmGmHn2S2-rwzWJ8O7MX5L4Rc",
+          "mode": "list",
+          "cachedResultName": "ArcVault Support Intake Output",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1fB4A0XfF6ofqVvoLn2NmGmHn2S2-rwzWJ8O7MX5L4Rc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Results",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1fB4A0XfF6ofqVvoLn2NmGmHn2S2-rwzWJ8O7MX5L4Rc/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "source": "={{$json.source}}",
+            "original_message": "={{$json.original_message}}",
+            "category": "={{$json.category}}",
+            "priority": "={{$json.priority}}",
+            "confidence": "={{$json.confidence}}",
+            "issue_summary": "={{$json.issue_summary}}",
+            "identifiers": "={{JSON.stringify($json.identifiers)}}",
+            "urgency": "={{$json.urgency}}",
+            "destination_queue": "={{$json.destination_queue}}",
+            "escalation": "={{$json.escalation}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "original_message",
+              "displayName": "original_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confidence",
+              "displayName": "confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "issue_summary",
+              "displayName": "issue_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "identifiers",
+              "displayName": "identifiers",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "urgency",
+              "displayName": "urgency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "destination_queue",
+              "displayName": "destination_queue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "escalation",
+              "displayName": "escalation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1632,
+        -32
+      ],
+      "id": "7a91b468-1fe3-40fe-88d2-2757221f004c",
+      "name": "ArcVault Support Intake Output",
+      "alwaysOutputData": false,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "9n3CYL1VtIiAVj8j",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2b8d134d-8d33-4e80-9f96-70c91d1cdf04",
+              "name": "destination_queue",
+              "value": "Engineering",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        848,
+        -304
+      ],
+      "id": "ad3a6d5d-4d28-4291-9065-7b7495849e82",
+      "name": "queue 1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f823feaf-26d0-48cc-b14b-cc36c84c9987",
+              "name": "destination_queue",
+              "value": "Engineering",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        848,
+        288
+      ],
+      "id": "8f819aff-99be-44ff-a056-30f86621a81f",
+      "name": "queue 5"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "85b9c002-8a02-4b27-84a9-607d18db129c",
+              "name": "destination_queue",
+              "value": "IT Support",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        848,
+        144
+      ],
+      "id": "163de369-690a-47a9-bc04-8b09d50b585a",
+      "name": "queue 4"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9f6670da-d90d-426a-92c7-c2eaa12ef1b3",
+              "name": "destination_queue",
+              "value": "Billing",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        848,
+        0
+      ],
+      "id": "601189a4-9d9f-4e9e-b11e-a30b11b2b90f",
+      "name": "queue 3"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "03c0e962-91a8-4cdc-9779-6b79ed490ed7",
+              "name": "destination_queue",
+              "value": "Product",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        848,
+        -144
+      ],
+      "id": "f0c2ed3f-988d-415c-8b61-37e5c940ea95",
+      "name": "queue 2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classification": {
+      "main": [
+        [
+          {
+            "node": "Parse Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Parse Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Parse Classification": {
+      "main": [
+        [
+          {
+            "node": "Enrichment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "queue 1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "queue 2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "queue 3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "queue 4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "queue 5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Set Escalation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Escalation": {
+      "main": [
+        [
+          {
+            "node": "ArcVault Support Intake Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Normal": {
+      "main": [
+        [
+          {
+            "node": "ArcVault Support Intake Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "queue 1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "queue 5": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "queue 4": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "queue 3": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "queue 2": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "06a2b492-9e5f-441f-bec2-bd8a04114cde",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0553d8c9598ba901b861e7f2e18dcc9a335a5fd42ca2f7d1b7141649b8d06e8d"
+  },
+  "id": "0tshWd1nkfmyGRw4",
+  "tags": []
+}
